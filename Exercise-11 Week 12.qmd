@@ -1,0 +1,280 @@
+---
+title: "Exercise-11"
+author: "Kathryn Rhodes"
+format: html
+editor: visual
+---
+
+## Exercise 11
+
+Practice Model Selection
+
+## Data load in
+
+from Ernest SKM (2003). Life history characteristics of placental nonvolant mammals.
+
+```{r}
+library(tidyverse)
+library(skimr)
+url <- "https://raw.githubusercontent.com/difiore/ada-datasets/main/Mammal_lifehistories_v2.txt"
+d <- read_tsv(url, col_names = TRUE)
+head(d) #confirm successful tibble load in
+skim(d) #data exploration
+
+```
+
+After exploratory data analysis, there are 4 character/categorical variables and 10 numeric variables. The names of all are above as a result of the skim() function.
+
+Step 1.
+
+```{r}
+#replace -999 with NA
+library(naniar)
+d <- d |>
+  replace_with_na_all(condition = ~.x == -999)
+```
+
+Step 2.
+
+```{r}
+#remove the Litter size and Refs columns to winnow data
+d <- d |>
+  select(-c("litter size", "refs"))
+skim(d) #confirm both columns have been removed successfully (from 14 to 12 variables)
+head(d) #for later comparison to see log transformation
+```
+
+Step 3.
+
+```{r}
+#log transform the numeric variables
+d <- d |> mutate(across(where(is.numeric), log))
+head(d) #confirm successful log transformation
+```
+
+Step 4.
+
+```{r}
+#regression of age and mass variables on overall body mass, then add into data frame
+#get rid of any Inf/Na/Nan rows so they don't affect the regression
+valid_rows <- !is.na(d$`gestation(mo)`) & 
+              !is.na(d$`mass(g)`) & 
+              d$`gestation(mo)` > 0 & 
+              d$`mass(g)` > 0 &
+              !is.infinite(d$`gestation(mo)`) &
+              !is.infinite(d$`mass(g)`)
+#now the regression & adding it as separate column
+if(sum(valid_rows) > 1) {
+  gest_model <- lm(`gestation(mo)` ~ `mass(g)`, data = d[valid_rows, ])
+  d$relGest <- NA
+  d$relGest[valid_rows] <- resid(gest_model)
+}
+
+#repeat for weaning(mo)
+valid_rows <- !is.na(d$`weaning(mo)`) & 
+              !is.na(d$`mass(g)`) & 
+              d$`weaning(mo)` > 0 & 
+              d$`mass(g)` > 0 &
+              !is.infinite(d$`weaning(mo)`) &
+              !is.infinite(d$`mass(g)`)
+if(sum(valid_rows) > 1) {
+  wean_model <- lm(`weaning(mo)` ~ `mass(g)`, data = d[valid_rows, ])
+  d$relWean <- NA
+  d$relWean[valid_rows] <- resid(wean_model)
+}
+
+#repeat for AFR(mo)
+valid_rows <- !is.na(d$`AFR(mo)`) & 
+              !is.na(d$`mass(g)`) & 
+              d$`AFR(mo)` > 0 & 
+              d$`mass(g)` > 0 &
+              !is.infinite(d$`AFR(mo)`) &
+              !is.infinite(d$`mass(g)`)
+if(sum(valid_rows) > 1) {
+  AFR_model <- lm(`AFR(mo)` ~ `mass(g)`, data = d[valid_rows, ])
+  d$relAFR <- NA
+  d$relAFR[valid_rows] <- resid(AFR_model)
+}
+
+#repeat for max. life(mo)
+valid_rows <- !is.na(d$`max. life(mo)`) & 
+              !is.na(d$`mass(g)`) & 
+              d$`max. life(mo)` > 0 & 
+              d$`mass(g)` > 0 &
+              !is.infinite(d$`max. life(mo)`) &
+              !is.infinite(d$`mass(g)`)
+if(sum(valid_rows) > 1) {
+  maxlife_model <- lm(`max. life(mo)` ~ `mass(g)`, data = d[valid_rows, ])
+  d$relLife <- NA
+  d$relLife[valid_rows] <- resid(maxlife_model)
+}
+
+
+#repeat for newborn(g)
+valid_rows <- !is.na(d$`newborn(g)`) & 
+              !is.na(d$`mass(g)`) & 
+              d$`newborn(g)` > 0 & 
+              d$`mass(g)` > 0 &
+              !is.infinite(d$`newborn(g)`) &
+              !is.infinite(d$`mass(g)`)
+if(sum(valid_rows) > 1) {
+  newborn_model <- lm(`newborn(g)` ~ `mass(g)`, data = d[valid_rows, ])
+  d$relNewbornMass <- NA
+  d$relNewbornMass[valid_rows] <- resid(newborn_model)
+}
+
+#repeat for wean mass(g)
+valid_rows <- !is.na(d$`wean mass(g)`) & 
+              !is.na(d$`mass(g)`) & 
+              d$`wean mass(g)` > 0 & 
+              d$`mass(g)` > 0 &
+              !is.infinite(d$`wean mass(g)`) &
+              !is.infinite(d$`mass(g)`)
+if(sum(valid_rows) > 1) {
+  weanmass_model <- lm(`wean mass(g)` ~ `mass(g)`, data = d[valid_rows, ])
+  d$relWeaningMass <- NA
+  d$relWeaningMass[valid_rows] <- resid(weanmass_model)
+}
+colnames(d) #ensure the 6 new columns have been added
+```
+
+Step 5.
+
+```{r}
+library(cowplot)
+#plot residuals of max lifespan (relLife) in relation to order
+plot_relLife <- ggplot(data = d, aes(x = order, y = relLife)) +
+  geom_boxplot(na.rm = TRUE) +
+  geom_jitter(na.rm = TRUE, alpha = 0.1) +
+  theme(axis.text.x = element_text(angle = 90))
+#plot residuals of newborn mass (relNewbornMass) in relation to order
+plot_relNewbornMass <- ggplot(data = d, aes(x = order, y = relNewbornMass)) +
+  geom_boxplot(na.rm = TRUE) +
+  geom_jitter(na.rm = TRUE, alpha = 0.1) +
+  theme(axis.text.x = element_text(angle = 90))
+#plot residuals of weaning mass (relWeaningMass) in relation to order
+plot_relWeaningMass <- ggplot(data = d, aes(x = order, y = relWeaningMass)) +
+  geom_boxplot(na.rm = TRUE) +
+  geom_jitter(na.rm = TRUE, alpha = 0.1) +
+  theme(axis.text.x = element_text(angle = 90))
+#arrange plots
+plot_grid(plot_relLife, plot_relNewbornMass, plot_relWeaningMass, nrow = 3)
+```
+
+Highest residual lifespan appears to be in the Primates order.
+
+Highest residual newborn mass appears to be the Cetacea and Macroscelidae orders.
+
+Highest residual weaning mass appears to be the Perrisodactyla order.
+
+Step 6.
+
+```{r}
+#models and model selection to evaluate what variables best predict each of the two response variables max. life(mo) and AFR(mo)
+
+#lifespan model selection
+lifespan_model <- d %>%
+  filter_at(vars(`max. life(mo)`, `gestation(mo)`, `newborn(g)`, `weaning(mo)`, 
+                 `wean mass(g)`, `litters/year`, `mass(g)`), 
+            all_vars(is.finite(.)))
+full_ML <- lm(`max. life(mo)` ~ `gestation(mo)` + `newborn(g)` + `weaning(mo)` + 
+              `wean mass(g)` + `litters/year` + `mass(g)`, 
+              data = lifespan_model)
+null_ML <- lm(`max. life(mo)` ~ 1, data = lifespan_model)
+summary(full_ML)
+
+#forwards selection
+add1(null_ML, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f2 <- update(null_ML, .~. + `gestation(mo)`)
+add1(f2, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f3 <- update(f2, .~. + `litters/year`)
+add1(f3, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f4 <- update(f3, .~. + `mass(g)`)
+add1(f4, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f5 <- update(f4, .~. + `weaning(mo)`)
+add1(f5, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+
+#backwards selection
+drop1(full_ML, test = "F")
+b2 <- update(full_ML, .~. - `wean mass(g)`)
+drop1(b2, test = "F")
+b3 <- update(b2, .~. - `newborn(g)`)
+drop1(b3, test = "F")
+
+```
+
+Both the forwards and the backwards Stepwise selection show that the best model is:
+
+max. life(mo) \~ gestation(mo) + weaning(mo) + litters/year + mass(g)
+
+```{r}
+#using AICc
+library(MuMIn)
+options(na.action = "na.fail")
+ML_AICc <- dredge(full_ML)
+head(coef(ML_AICc), 10) #best 10 models will appear
+(ML_AICc.avg <- summary(model.avg(ML_AICc, subset = delta < 4)))
+```
+
+Still, the best model based on a delta AICc of less than 4 is:
+
+max. life(mo) \~ gestation(mo) + weaning(mo) + litters/year + mass(g)
+
+The variables in the top sets of models are gestation, weaning, litters/year, and mass.
+
+```{r}
+#plotting the model-averaged coefficients and CIs across the top models
+confint(ML_AICc.avg)
+plot(ML_AICc.avg, full = TRUE, intercept = FALSE)
+```
+
+Gestation, weaning, litters/year, and mass all still show a 95% CI around coefficient doesn't include 0.
+
+```{r}
+#AFR model selection
+AFR_model <- d %>%
+  filter_at(vars(`AFR(mo)`, `gestation(mo)`, `newborn(g)`, `weaning(mo)`, 
+                 `wean mass(g)`, `litters/year`, `mass(g)`), 
+            all_vars(is.finite(.)))
+full_AFR <- lm(`AFR(mo)` ~ `gestation(mo)` + `newborn(g)` + `weaning(mo)` + 
+              `wean mass(g)` + `litters/year` + `mass(g)`, 
+              data = AFR_model)
+null_AFR <- lm(`AFR(mo)` ~ 1, data = AFR_model)
+summary(full_AFR)
+
+#forwards selection
+add1(null_AFR, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f2 <- update(null_AFR, .~. + `gestation(mo)`)
+add1(f2, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f3 <- update(f2, .~. + `litters/year`)
+add1(f3, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f4 <- update(f3, .~. + `mass(g)`)
+add1(f4, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+f5 <- update(f4, .~. + `weaning(mo)`)
+add1(f5, .~. + `gestation(mo)` + `newborn(g)` + `weaning(mo)` + `wean mass(g)` + `litters/year` + `mass(g)`, test = "F")
+
+#backwards selection
+drop1(full_AFR, test = "F")
+b2 <- update(full_AFR, .~. - `wean mass(g)`)
+drop1(b2, test = "F")
+b3 <- update(b2, .~. - `newborn(g)`)
+drop1(b3, test = "F")
+```
+
+Same model as observed previously using F statistic for stepwise model selection seems to be working
+
+```{r}
+#AICc
+options(na.action = "na.fail")
+AFR_AICc <- dredge(full_AFR)
+head(coef(AFR_AICc), 10) 
+(AFR_AICc.avg <- summary(model.avg(AFR_AICc, subset = delta < 4)))
+```
+
+Best model still stands. The gestation, weaning, and litters/year appear in all the models with delta AICc less than 4.
+
+```{r}
+#plotting the model-averaged coefficients and CIs across the top models
+confint(AFR_AICc.avg)
+plot(AFR_AICc.avg, full = TRUE, intercept = FALSE)
+```
